@@ -1,0 +1,21 @@
+name: Backfill Scraper (run once)
+ 
+on:
+  workflow_dispatch:   # manual trigger only — run this ONCE from GitHub Actions tab
+ 
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360   # allow up to 6 hours
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests beautifulsoup4 supabase python-dotenv
+      - name: Run backfill scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python scraper_v3.py --backfill
+ 
