@@ -35,7 +35,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ "${{ github.event.inputs.backfill }}" = "true" ]; then
-            python scraper_v5.py --backfill
+            python scraper_v6.py --backfill
           else
-            python scraper_v5.py
+            python scraper_v6.py
           fi
