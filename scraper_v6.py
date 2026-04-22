@@ -26,11 +26,17 @@ def run_scraper():
     victims_list = scrape_data()  # Assume this exists
 
     try:
-        supabase.table('victims').insert(victims_list).execute()
-    except Exception as e:
-        source_url = getattr(e, 'url', 'unknown')
-        logging.error("Supabase insert failed | source: %s | error: %s", source_url, str(e))
+        for record in victims_list:
+            try:
+                supabase.table('victims').insert(record).execute()
+            except Exception as e:
+                logging.error(
+                    "Supabase row insert failed | data: %s | error: %s",
+                    json.dumps(record),
+                    str(e)
+                )
     finally:
+        # Always dump the full list of scraped data as a reliable artifact
         dump_json(victims_list)
 
 if __name__ == "__main__":
