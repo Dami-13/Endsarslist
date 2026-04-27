@@ -3,6 +3,9 @@ name: Run Tweet Bot
 on:
   schedule:
     - cron: '0 0 * * *'
+  push:
+    paths:
+      - '.github/workflow-triggers/run_bot.trigger'
   workflow_dispatch: # Allows you to run it manually for testing
 
 jobs:
