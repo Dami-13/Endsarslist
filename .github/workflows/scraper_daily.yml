@@ -33,7 +33,7 @@ jobs:
 
       - name: Run scraper
         env:
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          D1_ADMIN_TOKEN: ${{ secrets.D1_ADMIN_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           API_BASE_URL: https://endsarslist-api.damidude.workers.dev
         run: |
