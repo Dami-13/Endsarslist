@@ -3,6 +3,9 @@ name: Daily Scraper
 on:
   schedule:
     - cron: '0 6 * * *'   # 7am WAT every day
+  push:
+    paths:
+      - '.github/workflow-triggers/scraper_daily.trigger'
   workflow_dispatch:
     inputs:
       backfill:
