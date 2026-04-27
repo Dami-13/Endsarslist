@@ -26,7 +26,7 @@ jobs:
 
       - name: Run bot
         env:
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          D1_ADMIN_TOKEN: ${{ secrets.D1_ADMIN_TOKEN }}
           API_BASE_URL: https://endsarslist-api.damidude.workers.dev
           X_CONSUMER_KEY: ${{ secrets.X_CONSUMER_KEY }}
           X_CONSUMER_SECRET: ${{ secrets.X_CONSUMER_SECRET }}
