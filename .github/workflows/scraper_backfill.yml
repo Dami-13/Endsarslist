@@ -15,12 +15,12 @@ jobs:
           python-version: '3.11'
  
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 lxml supabase python-dotenv anthropic
- 
+        run: pip install requests beautifulsoup4 lxml python-dotenv anthropic
+
       - name: Run backfill scraper
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python scraper_v6.py --backfill
+          API_BASE_URL: https://endsarslist-api.damidude.workers.dev
+        run: python scraper_v5.py --backfill
  
