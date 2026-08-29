@@ -21,6 +21,8 @@ HIGH_INTENT = (
     "flight cancelled", "flight delayed", "compensation",
 )
 LOW_INTENT = ("news", "deal", "sale", "giveaway", "job", "hiring", "crypto")
+EXCLUDED_USERS = {"claimdelay", "click2refund", "airhelp", "airadvisor", "flightright", "skycop"}
+PROMOTIONAL = ("claim for your flight delay", "professional claim company", "check your eligibility", "no win no fee")
 
 
 def score(text):
@@ -61,6 +63,10 @@ def main():
         for post in payload.get("data", []):
             user = users.get(post.get("author_id"), {})
             text = post.get("text", "")
+            username = (user.get("username") or "").lower()
+            lowered = text.lower()
+            if username in EXCLUDED_USERS or any(phrase in lowered for phrase in PROMOTIONAL):
+                continue
             item = {
                 "id": post["id"],
                 "created_at": post.get("created_at"),
