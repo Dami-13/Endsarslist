@@ -82,7 +82,8 @@ OPENAI_EXTRACTION_SCHEMA = {
                     "additionalProperties": False,
                     "properties": {
                         "full_name": {"type": "string"},
-                        "record_type": {"type": "string", "enum": ["missing", "arrested"]},
+                        "record_type": {"type": "string", "enum": ["missing", "arrested", "not_applicable"]},
+                        "outcome": {"type": "string", "enum": ["still_missing", "found_alive", "found_deceased", "detained", "released", "released_on_bail", "charged", "convicted", "acquitted", "deceased", "not_applicable"]},
                         "age": {"type": ["integer", "null"]},
                         "gender": {"type": "string", "enum": ["male", "female", "unknown"]},
                         "state": {"type": "string"},
@@ -95,6 +96,7 @@ OPENAI_EXTRACTION_SCHEMA = {
                     "required": [
                         "full_name",
                         "record_type",
+                        "outcome",
                         "age",
                         "gender",
                         "state",
@@ -369,6 +371,7 @@ class ScrapedPerson:
     source_url: str
     source_name: str
     record_type: str
+    status: str = ""
     circumstances: str = ""
     last_seen_location: str = ""
     state: str = ""
@@ -636,11 +639,32 @@ def normalize_name(name: str) -> str:
     return normalize_whitespace(name).replace(" ,", ",")
 
 
+NAME_TITLES = re.compile(
+    r"^(mr|mrs|ms|miss|dr|rev|revd|fr|father|alhaji|alhaja|hajia|malam|mallam|chief|prof|pastor|hon|barr|engr|comrade|comr|sir|lady|oba|emir|imam|sheikh|cpl|sgt|capt|lt|col|gen|insp|asp|dsp|csp)\.?$"
+)
+
+MISSING_OUTCOMES = ("still_missing", "found_alive", "found_deceased")
+ARRESTED_OUTCOMES = ("detained", "released", "released_on_bail", "charged", "convicted", "acquitted", "deceased")
+
+
+def status_from_outcome(record_type: str, outcome: str) -> str:
+    if record_type == "missing":
+        return outcome if outcome in ("found_alive", "found_deceased") else "missing"
+    return outcome if outcome in ARRESTED_OUTCOMES else "detained"
+
+
+def name_key(name: str) -> str:
+    tokens = re.sub(r"[^a-z\s'-]", " ", name.lower()).split()
+    return " ".join(token for token in tokens if not NAME_TITLES.match(token))
+
+
+# Within-run guard only. Cross-run duplicates (title variants, nearby dates, status updates)
+# are handled by the Worker's admin API, which both scrapers save through.
 def person_key(record_type: str, name: str, state: str, article_date: Optional[str]) -> Tuple[str, str, str, str]:
     return (
         record_type,
-        normalize_name(name).lower(),
-        normalize_whitespace(state).lower(),
+        name_key(normalize_name(name)),
+        re.sub(r"\s+state$", "", normalize_whitespace(state).lower()),
         article_date or "",
     )
 
@@ -718,6 +742,13 @@ def should_keep_name(name: str) -> bool:
         return False
     if re.search(r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\b", lowered):
         return False
+    if re.search(r"\d", lowered) or re.search(r"'s\b", lowered):
+        return False
+    if re.search(
+        r"\b(govt|government|federal|ministry|commission|command|police|army|troops|navy|naf|dss|efcc|ndlea|nscdc|inec|apc|pdp|court|senate|assembly|council|faction|crash|members|individuals|unspecified|unnamed|unknown|unidentified|nationals|miners|cultists|suspected|students|pupils|schoolchildren|passengers|travellers|villagers|farmers|worshippers|residents|youths|abductees|hostages|family|families|staff|crew|corps|community|group|others|people|persons|victims|multiple|several|name)\b",
+        lowered,
+    ):
+        return False
     tokens = [token.strip(".,:;!?()[]{}'\"") for token in name.split() if token.strip(".,:;!?()[]{}'\"")]
     if len(tokens) < 2 or len(tokens) > 5:
         return False
@@ -737,22 +768,30 @@ Given a news article, extract information about people who are:
 Return ONLY valid JSON matching the schema. If no relevant person found, return {"people":[]}.
 
 Fields per person:
-- full_name: string (must be a real human name with at least 2 words)
-- record_type: "missing" | "arrested"
+- full_name: string (must be one real individual's name with at least 2 words)
+- record_type: "missing" | "arrested" | "not_applicable"
+- outcome: the person's situation as of the article (see below)
 - age: number or null
 - gender: "male" | "female" | "unknown"
-- state: Nigerian state or city name, or ""
+- state: one of Nigeria's 36 states or "FCT", or "" if not stated or outside Nigeria
 - circumstances: 1-2 sentence summary of what happened (max 300 chars)
 - last_seen_location: where last seen (for missing persons) or ""
 - arresting_authority: e.g. "Police", "DSS", "Army", "EFCC" (for arrested) or ""
 - charges: what charged with (for arrested) or ""
 - holding_location: where being held (for arrested) or ""
 
+outcome values:
+- for record_type "missing": "still_missing", "found_alive" (rescued, freed, escaped, released by kidnappers, returned home), or "found_deceased" (killed, died, body found)
+- for record_type "arrested": "detained", "released", "released_on_bail", "charged", "convicted", "acquitted", or "deceased" (died in custody)
+- for "not_applicable": "not_applicable"
+
 Rules:
 - REJECT job titles, organisations, agencies, or places as names: "Press Secretary", "Central Bank", "The Governor", "Police Officer"
+- REJECT groups, counts and collectives: "42 Schoolchildren", "Unspecified Individuals", "Family Members", "Passengers", "Federal Govt", "Oyo Police"
 - If only a group is mentioned with no individual names, return []
-- Only include people clearly identified as missing or arrested/detained
-- Include suspects, victims, detainees, kidnapped people, rescued kidnap victims, and remanded defendants if they are clearly named individual people
+- Only include people who were themselves missing, abducted, arrested or detained, including named suspects, detainees, kidnapped people, rescued kidnap victims, and remanded defendants
+- Use "not_applicable" for anyone else named in the story: police officers, spokespeople, officials, lawyers, judges, politicians, relatives, witnesses, or victims of a crime who were not abducted
+- Someone killed in an attack who was never missing or abducted is "not_applicable"
 - If a person is unnamed or only described as "unknown", "unidentified", "victim", or "suspect", do not include them
 - Do not invent or assume information not stated in the article
 
@@ -760,17 +799,16 @@ Return raw JSON only. No markdown, no explanation, no preamble."""
 
 EXTRACT_PROMPT_RETRY = """You are doing a second-pass extraction for a Nigerian missing-persons and detention tracker.
 
-Extract EVERY clearly identified individual in the article who is:
-- missing, abducted, kidnapped, rescued after kidnapping, or whose whereabouts are unknown
+Read the whole article, including body paragraphs not mentioned in the headline, and extract every clearly named individual who was themselves:
+- missing, abducted, kidnapped (including those later rescued or found dead), or whose whereabouts are unknown
 - arrested, detained, remanded, nabbed, apprehended, or held in custody
 
-Be less conservative than usual:
-- include names that appear in body paragraphs even if not highlighted in the headline
-- include suspects and defendants if the story says they were arrested, remanded, or detained
-- still require real names with at least 2 words
-- reject placeholders like "Unknown Suspect", "Unknown Female Victim", "Unidentified Man", "Driver", or "Passenger"
+Apply exactly the same fields, outcome values and rules as the first pass:
+- record_type "not_applicable" for officials, police, spokespeople, lawyers, relatives, witnesses and anyone else merely mentioned
+- outcome reflects the person's situation as of the article (e.g. "found_alive" if rescued, "found_deceased" if killed)
+- require real individual names with at least 2 words; reject groups, counts, organisations and placeholders like "Unknown Suspect", "Unidentified Man", "Driver", or "Passenger"
 
-Return raw JSON only using the same schema as before, wrapped as {"people":[...]}"""
+Return raw JSON only using the same schema as before, wrapped as {"people":[...]}."""
 
 
 def extract_openai_output_text(payload: dict) -> str:
@@ -895,6 +933,9 @@ def scrape_article(
         record_type = item.get("record_type", "")
         if record_type not in ("missing", "arrested"):
             continue
+        outcome = item.get("outcome", "")
+        if outcome not in (MISSING_OUTCOMES if record_type == "missing" else ARRESTED_OUTCOMES):
+            continue
         dedupe_key = person_key(
             record_type,
             name,
@@ -909,6 +950,7 @@ def scrape_article(
             source_url=url,
             source_name=source_name,
             record_type=record_type,
+            status=status_from_outcome(record_type, outcome),
             circumstances=str(item.get("circumstances", ""))[:300],
             last_seen_location=str(item.get("last_seen_location", ""))[:150],
             state=str(item.get("state", ""))[:50],
@@ -921,7 +963,7 @@ def scrape_article(
             arresting_authority=str(item.get("arresting_authority", ""))[:100],
         )
         persons.append(person)
-        log.info(f"  + [{record_type}] {name} ({article_date or 'no date'}) - {source_name}")
+        log.info(f"  + [{record_type}/{person.status}] {name} ({article_date or 'no date'}) - {source_name}")
     return persons
 
 
@@ -943,7 +985,7 @@ def save_person(person: ScrapedPerson) -> bool:
                 "source": "scraped",
                 "source_name": person.source_name,
                 "source_url": person.source_url,
-                "status": "detained",
+                "status": person.status or "detained",
                 "is_approved": True,
             }
             response = requests.post(
@@ -965,7 +1007,9 @@ def save_person(person: ScrapedPerson) -> bool:
                 "source": "scraped",
                 "source_name": person.source_name,
                 "source_url": person.source_url,
-                "status": "missing",
+                "status": person.status or "missing",
+                "date_found": person.article_date if person.status in ("found_alive", "found_deceased") else None,
+                "found_notes": person.circumstances or None if person.status in ("found_alive", "found_deceased") else None,
                 "is_approved": True,
             }
             response = requests.post(
@@ -975,7 +1019,14 @@ def save_person(person: ScrapedPerson) -> bool:
                 timeout=TIMEOUT,
             )
         response.raise_for_status()
-        return True
+        # The admin API returns {"action": "inserted" | "duplicate" | "updated" | "rejected"} for scraped rows.
+        try:
+            action = (response.json() or {}).get("action", "inserted")
+        except ValueError:
+            action = "inserted"
+        if action != "inserted":
+            log.info(f"  = {action}: {person.full_name}")
+        return action == "inserted"
     except Exception as e:
         response_text = getattr(locals().get("response", None), "text", str(e))
         if "duplicate" in str(e).lower() or "unique" in str(e).lower() or "ignore" in response_text.lower():
