@@ -78,6 +78,29 @@ def admin_post(path: str, payload: dict):
     return response.json()
 
 
+# Hashtag formula (same as src/jobs.js updateHashtags): fixed campaign tags plus the
+# states with the most records in this post. States are stored canonically by the Worker.
+BASE_HASHTAGS = ["#EndSARS", "#Nigeria", "#MissingPersons"]
+NIGERIAN_STATES = {
+    "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
+    "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT", "Gombe", "Imo",
+    "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa",
+    "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba",
+    "Yobe", "Zamfara",
+}
+
+
+def update_hashtags(rows: list, max_states: int = 2) -> str:
+    counts = {}
+    for row in rows:
+        state = (row.get("state") or "").strip()
+        if state in NIGERIAN_STATES:
+            tag = "#Abuja" if state == "FCT" else "#" + state.replace(" ", "")
+            counts[tag] = counts.get(tag, 0) + 1
+    states = [tag for tag, _ in sorted(counts.items(), key=lambda kv: -kv[1])[:max_states]]
+    return " ".join(BASE_HASHTAGS + states)
+
+
 STATUS_LABELS = {
     "found_alive": "Found alive",
     "found_deceased": "Found dead",
@@ -172,7 +195,7 @@ def run():
         headline += f"\nMissing: {len(missing)}"
     if arrested:
         headline += f"\nArrested/Detained: {len(arrested)}"
-    headline += "\n\nendsarslist.com"
+    headline += "\n\nendsarslist.com\n\n" + update_hashtags(missing + arrested)
 
     lines = []
     if missing:
@@ -188,8 +211,7 @@ def run():
     lines.append("")
     lines.append(
         "If you have information about any of these individuals or want to submit a report:\n"
-        "endsarslist.com\n\n"
-        "#EndSARS #Nigeria #MissingPersons #HumanRights"
+        "endsarslist.com"
     )
     detail = "\n".join(lines)
     if len(detail) > 280:
