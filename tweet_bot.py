@@ -78,12 +78,26 @@ def admin_post(path: str, payload: dict):
     return response.json()
 
 
+STATUS_LABELS = {
+    "found_alive": "Found alive",
+    "found_deceased": "Found dead",
+    "released": "Released",
+    "released_on_bail": "On bail",
+    "charged": "Charged",
+    "convicted": "Convicted",
+    "acquitted": "Acquitted",
+    "deceased": "Died in custody",
+}
+
+
 def format_missing(row: dict) -> str:
     parts = [f"{row['full_name']}"]
     if row.get("age"):
         parts.append(f"Age {row['age']}")
     if row.get("state"):
         parts.append(row["state"])
+    if row.get("status") in STATUS_LABELS:
+        parts.append(STATUS_LABELS[row["status"]])
     return " | ".join(parts)
 
 
@@ -95,6 +109,8 @@ def format_arrested(row: dict) -> str:
         parts.append(row["state"])
     if row.get("arresting_authority"):
         parts.append(f"Detained by {row['arresting_authority']}")
+    if row.get("status") in STATUS_LABELS:
+        parts.append(STATUS_LABELS[row["status"]])
     return " | ".join(parts)
 
 
