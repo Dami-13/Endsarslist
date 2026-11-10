@@ -48,4 +48,18 @@ found = xi.to_record({"post_id": "2", "full_name": "Tunde Bello", "record_type":
                       "arresting_authority": "", "charges": "", "holding_location": ""}, posts[1])
 assert found["status"] == "found_alive" and found["date_found"] == "2021-08-26"
 
+repeats = [
+    {**missing, "full_name": "Oba Akinade", "date_missing": "2020-10-28", "photo_url": None},
+    {**missing, "full_name": "Oba Akinade Clement", "date_missing": "2020-11-03"},
+    {**missing, "full_name": "Oba Akinade", "date_missing": "2021-06-11", "status": "found_alive", "circumstances": "He has been found."},
+    {**missing, "full_name": "Ada Okafor", "date_missing": "2021-08-25"},
+]
+for r in repeats:
+    r["source_url"] = "https://x.com/DMNI_NG/status/1"
+merged = sorted(xi.merge_repeats(repeats), key=lambda r: r["full_name"])
+assert [r["full_name"] for r in merged] == ["Ada Okafor", "Oba Akinade Clement"], [r["full_name"] for r in merged]
+oba = merged[1]
+assert oba["date_missing"] == "2020-10-28" and oba["status"] == "found_alive" and oba["date_found"] == "2021-06-11"
+assert oba["photo_url"], "photo should be taken from another post in the group"
+
 print("x import tests passed")

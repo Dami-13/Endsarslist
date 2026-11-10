@@ -218,6 +218,66 @@ def to_record(person: dict, post: dict) -> Dict:
             "found_notes": circumstances if found else None}
 
 
+NAME_TITLES = re.compile(r"^(mr|mrs|ms|miss|dr|rev|revd|fr|father|alhaji|alhaja|hajia|malam|mallam|chief|prof|pastor|hon|barr|engr|comrade|comr|sir|lady|emir|imam|sheikh|major|cpl|sgt|capt|lt|col|gen|insp|asp|dsp|csp)\.?$")
+RESOLVED = {"missing": 0, "found_alive": 1, "found_deceased": 2, "detained": 0, "charged": 1,
+            "released_on_bail": 2, "released": 3, "acquitted": 3, "convicted": 3, "deceased": 4}
+
+
+def name_tokens(name: str) -> List[str]:
+    return [t for t in re.sub(r"[^a-z\s'-]", " ", name.lower()).split() if not NAME_TITLES.match(t)]
+
+
+def same_name(a: str, b: str) -> bool:
+    x, y = name_tokens(a), name_tokens(b)
+    short, long = (x, set(y)) if len(x) <= len(y) else (y, set(x))
+    return len(short) >= 2 and all(t in long for t in short)
+
+
+def merge_repeats(records: List[dict]) -> List[dict]:
+    """Appeal accounts repost the same person for months; merge each person's posts on one
+    account into a single record: first appeal date, most resolved status, fullest details."""
+    def account(r): return r["source_url"].split("/")[3]
+    def when(r): return r.get("date_missing") or r.get("date_arrested") or ""
+
+    records = sorted(records, key=when)
+    parent = list(range(len(records)))
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(records)):
+        for j in range(i + 1, len(records)):
+            if account(records[i]) == account(records[j]) and same_name(records[i]["full_name"], records[j]["full_name"]):
+                parent[root(j)] = root(i)
+    groups: Dict[int, List[dict]] = {}
+    for i, record in enumerate(records):
+        groups.setdefault(root(i), []).append(record)
+
+    merged = []
+    for group in groups.values():
+        missing_votes = sum(1 for r in group if r["kind"] == "missing")
+        kind = "missing" if missing_votes >= len(group) - missing_votes else "arrested"
+        of_kind = [r for r in group if r["kind"] == kind]
+        best = sorted(of_kind, key=lambda r: (RESOLVED.get(r["status"], 0), when(r)))[-1]
+        first = group[0]
+        record = dict(first if first["kind"] == kind else of_kind[0])
+        record["full_name"] = max((r["full_name"] for r in group), key=lambda n: len(name_tokens(n)))
+        record["status"] = best["status"]
+        for field in ("age", "state", "photo_url", "last_seen_location", "arresting_authority", "charges", "holding_location"):
+            if not record.get(field):
+                record[field] = next((r.get(field) for r in group if r.get(field)), None)
+        record["circumstances"] = max((r.get("circumstances") or "" for r in group), key=len) or None
+        if kind == "missing":
+            found = best["status"] in ("found_alive", "found_deceased")
+            record["date_found"] = when(best) if found else None
+            record["found_notes"] = best.get("circumstances") if found else None
+        merged.append(record)
+    return merged
+
+
 def save(record: dict) -> str:
     kind = record.pop("kind")
     response = requests.post(f"{API_BASE_URL}/api/admin/{kind}_persons",
@@ -248,6 +308,10 @@ def run(dry_run: bool):
                 continue
             records.append(to_record(person, post))
         log.info("extracted %s people from %s/%s posts", len(records), min(start + BATCH_SIZE, len(posts)), len(posts))
+
+    mentions = len(records)
+    records = merge_repeats(records)
+    log.info("merged %s mentions into %s people", mentions, len(records))
 
     with open("x_import_preview.json", "w", encoding="utf-8") as handle:
         json.dump({"accounts": accounts, "posts_read": len(posts), "people": records}, handle, ensure_ascii=False, indent=1)
