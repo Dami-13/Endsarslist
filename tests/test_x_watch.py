@@ -58,7 +58,8 @@ xw.base.oauth = FakeOAuth()
 xw.requests.post = lambda *a, **k: FakeResponse()
 xw.run(dry_run=False)
 assert saved == ["Bridget Okey", "Musa Bello"], saved
-assert [q["quote_tweet_id"] for q in quoted] == ["1", "2"], quoted
+assert len(quoted) == 2 and all("quote_tweet_id" not in q and "reply" not in q for q in quoted), quoted
+assert "(source: instablog9ja)" in quoted[0]["text"] and "@" not in quoted[0]["text"]
 assert quoted[0]["text"].startswith("Added to the EndSARSList missing register: Bridget Okey.")
 assert quoted[1]["text"].startswith("Update: Musa Bello now marked found/released")
 

@@ -147,8 +147,9 @@ def join_names(names: List[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
-def quote_text(added: List[dict], resolved: List[dict]) -> str:
-    """Short, link-free quote post (X charges more for posts with links; the profile has the site)."""
+def quote_text(added: List[dict], resolved: List[dict], source: str = "") -> str:
+    """Short, link-free standalone post (X charges more for posts with links; the profile has the site).
+    The API only allows replies/quotes to posts that mention us, so the source is credited by name."""
     lines = []
     if added:
         missing = [r for r in added if r["kind"] == "missing"]
@@ -161,7 +162,8 @@ def quote_text(added: List[dict], resolved: List[dict]) -> str:
         lines.append(f"Update: {join_names([r['full_name'] for r in resolved])} now marked found/released on EndSARSList.")
     states = sorted({r["state"] for r in added + resolved if r.get("state") in base_states()})
     tags = ["#" + ("Abuja" if s == "FCT" else s.replace(" ", "")) for s in states[:2]] + ["#MissingPersons", "#EndSARS"]
-    text = "\n\n".join(lines) + "\n\nFull list: link in bio\n" + " ".join(tags)
+    credit = f" (source: {source})" if source else ""
+    text = "\n\n".join(lines) + credit + "\n\nFull list: link in bio\n" + " ".join(tags)
     return text if len(text) <= 280 else text[:277] + "..."
 
 
@@ -197,8 +199,9 @@ def run(dry_run: bool):
             counts[action] = counts.get(action, 0) + 1
             (added if action == "inserted" else resolved if action == "updated" else []).append(record)
         if (added or resolved) and quotes < MAX_QUOTES:
-            text = quote_text(added, resolved)
-            response = base.oauth.post("https://api.x.com/2/tweets", json={"text": text, "quote_tweet_id": post["id"]}, timeout=30)
+            # Credit the source by name, not @mention: automated mentions are restricted by X.
+            text = quote_text(added, resolved, post["username"])
+            response = base.oauth.post("https://api.x.com/2/tweets", json={"text": text}, timeout=30)
             if response.status_code in (200, 201):
                 quotes += 1
                 log.info("quoted %s: %s", post["id"], text.replace("\n", " | "))
