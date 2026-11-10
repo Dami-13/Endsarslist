@@ -1,0 +1,37 @@
+name: Post to X (approved post)
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: 'Post text (use \n for a line break, max 280 characters)'
+        required: true
+        type: string
+      reply_to:
+        description: 'Post ID to reply to (optional)'
+        required: false
+        type: string
+      quote:
+        description: 'Post ID to quote (optional)'
+        required: false
+        type: string
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests-oauthlib
+      - name: Post
+        env:
+          X_CONSUMER_KEY: ${{ secrets.X_CONSUMER_KEY }}
+          X_CONSUMER_SECRET: ${{ secrets.X_CONSUMER_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          POST_TEXT: ${{ github.event.inputs.text }}
+          REPLY_TO: ${{ github.event.inputs.reply_to }}
+          QUOTE: ${{ github.event.inputs.quote }}
+        run: python post_to_x.py --text "$POST_TEXT" --reply-to "$REPLY_TO" --quote "$QUOTE"

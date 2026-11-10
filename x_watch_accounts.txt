@@ -1,0 +1,11 @@
+# Nigerian news accounts on X watched daily by x_watch.py (one per line, without @)
+instablog9ja
+PremiumTimesng
+SaharaReporters
+channelstv
+MobilePunch
+vanguardngrnews
+TheCableng
+DailyPostNGR
+HumAngle_
+fijnigeria

@@ -1,0 +1,50 @@
+name: Watch X news accounts
+
+on:
+  # Daily schedule switched on after the first dry run is reviewed:
+  # schedule:
+  #   - cron: '30 7 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (read and extract only, nothing saved or posted)?'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests requests-oauthlib beautifulsoup4
+      - name: Watch
+        env:
+          D1_ADMIN_TOKEN: ${{ secrets.D1_ADMIN_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.ENDSARSLISTOPENAISECRET }}
+          API_BASE_URL: https://endsarslist-api.damidude.workers.dev
+          X_CONSUMER_KEY: ${{ secrets.X_CONSUMER_KEY }}
+          X_CONSUMER_SECRET: ${{ secrets.X_CONSUMER_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: |
+          # Scheduled runs save and quote-post; manual runs default to a dry run.
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.dry_run }}" = "false" ]; then
+            python x_watch.py
+          else
+            python x_watch.py --dry-run
+          fi
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-watch-preview
+          path: x_watch_preview.json
+          if-no-files-found: ignore
