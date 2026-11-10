@@ -52,7 +52,7 @@ Each post below has an id and a date. For every clearly named individual in a po
 
 Fields per person:
 - post_id: the id of the post the person appears in
-- full_name: one real individual's name with at least 2 words (reject groups, placeholders, organisations, single first names)
+- full_name: one real individual's name; a first name alone is fine if that is all the post gives (reject groups, placeholders, organisations)
 - record_type: "missing" | "arrested" | "not_applicable"
 - outcome: for missing: "still_missing", "found_alive" (found, rescued, released, returned home, reunited) or "found_deceased"; for arrested: "detained", "released", "released_on_bail", "charged", "convicted", "acquitted" or "deceased"; otherwise "not_applicable"
 - age: number or null

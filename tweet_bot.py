@@ -210,8 +210,8 @@ def run():
             lines.append(format_arrested(row))
     lines.append("")
     lines.append(
-        "If you have information about any of these individuals or want to submit a report:\n"
-        "endsarslist.com"
+        # No link here: X charges far more for posts containing a URL, and the first post has it.
+        "Have information about anyone listed? Full list and report form linked in the post above."
     )
     detail = "\n".join(lines)
     if len(detail) > 280:

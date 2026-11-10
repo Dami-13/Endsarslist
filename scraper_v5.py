@@ -119,6 +119,8 @@ RELEVANCE_WORDS = [
     "has been missing", "taken by", "taken into custody", "apprehended",
     "nabbed", "rescued victim", "declared missing", "wanted person",
     "suspect", "suspects", "held hostage", "released after ransom",
+    "arraigned", "picked up", "incommunicado", "awaiting trial", "in custody",
+    "rounded up", "whisked away",
 ]
 
 URL_RELEVANCE_HINTS = (
@@ -150,6 +152,11 @@ SEARCH_QUERIES = [
     "suspects arrested Nigeria",
     "apprehended Nigeria",
     "nabbed Nigeria",
+    "picked up by police Nigeria",
+    "arraigned Nigeria",
+    "held incommunicado Nigeria",
+    "detained without trial Nigeria",
+    "awaiting trial Nigeria",
     "court remands Nigeria",
     "remanded in prison custody Nigeria",
     "wanted person Nigeria",
@@ -750,13 +757,14 @@ def should_keep_name(name: str) -> bool:
     ):
         return False
     tokens = [token.strip(".,:;!?()[]{}'\"") for token in name.split() if token.strip(".,:;!?()[]{}'\"")]
-    if len(tokens) < 2 or len(tokens) > 5:
+    # A first name alone is kept when that is all the report gives.
+    if len(tokens) < 1 or len(tokens) > 5:
         return False
     if sum(1 for token in tokens if token.isupper() and len(token) > 1) > 2:
         return False
     if any(token and token[0].islower() for token in tokens):
         return False
-    return len(name.split()) >= 2
+    return True
 
 
 EXTRACT_PROMPT = """You are a data extraction assistant for a Nigerian human rights database tracking victims of police brutality, government repression, and the EndSARS movement.
@@ -768,7 +776,7 @@ Given a news article, extract information about people who are:
 Return ONLY valid JSON matching the schema. If no relevant person found, return {"people":[]}.
 
 Fields per person:
-- full_name: string (must be one real individual's name with at least 2 words)
+- full_name: string (one real individual's name; a first name alone is fine if that is all the article gives)
 - record_type: "missing" | "arrested" | "not_applicable"
 - outcome: the person's situation as of the article (see below)
 - age: number or null
@@ -806,7 +814,7 @@ Read the whole article, including body paragraphs not mentioned in the headline,
 Apply exactly the same fields, outcome values and rules as the first pass:
 - record_type "not_applicable" for officials, police, spokespeople, lawyers, relatives, witnesses and anyone else merely mentioned
 - outcome reflects the person's situation as of the article (e.g. "found_alive" if rescued, "found_deceased" if killed)
-- require real individual names with at least 2 words; reject groups, counts, organisations and placeholders like "Unknown Suspect", "Unidentified Man", "Driver", or "Passenger"
+- require real individual names (a first name alone is fine if that is all that is given); reject groups, counts, organisations and placeholders like "Unknown Suspect", "Unidentified Man", "Driver", or "Passenger"
 
 Return raw JSON only using the same schema as before, wrapped as {"people":[...]}."""
 
