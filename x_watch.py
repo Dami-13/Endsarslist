@@ -27,7 +27,7 @@ import x_accounts_import as base
 
 log = logging.getLogger("x_watch")
 LOOKBACK_HOURS = 26
-MAX_QUOTES = 5
+MAX_QUOTES = 1  # Dami, 10 Nov 2026: at most one post a day from this job
 MAX_POSTS = 100
 ARTICLE_LIMIT = 3500
 
@@ -153,24 +153,37 @@ def join_names(names: List[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
-def quote_text(added: List[dict], resolved: List[dict], source: str = "") -> str:
-    """Short, link-free standalone post (X charges more for posts with links; the profile has the site).
-    The API only allows replies/quotes to posts that mention us, so the source is credited by name."""
-    lines = []
-    if added:
-        missing = [r for r in added if r["kind"] == "missing"]
-        arrested = [r for r in added if r["kind"] == "arrested"]
+def name_list(names: List[str], limit: int) -> str:
+    """First `limit` names, then "and N more"."""
+    if len(names) <= limit:
+        return join_names(names)
+    return f"{', '.join(names[:limit])} and {len(names) - limit} more"
+
+
+def roundup_text(added: List[dict], resolved: List[dict], sources: List[str]) -> str:
+    """One link-free daily round-up post (X charges more for posts with links; the profile has the site).
+    The API only allows replies/quotes to posts that mention us, and automated @mentions are restricted,
+    so sources are credited by name."""
+    missing = [r["full_name"] for r in added if r["kind"] == "missing"]
+    arrested = [r["full_name"] for r in added if r["kind"] == "arrested"]
+    found = [r["full_name"] for r in resolved]
+    states = sorted({r["state"] for r in added + resolved if r.get("state") in base_states()},
+                    key=lambda s: -sum(1 for r in added + resolved if r.get("state") == s))
+    tags = " ".join(["#" + ("Abuja" if s == "FCT" else s.replace(" ", "")) for s in states[:2]] + ["#MissingPersons", "#EndSARS"])
+    credit = f"Sources: {', '.join(sorted(set(sources))[:3])}"
+    # Shrink the name lists until the post fits in 280 characters.
+    for limit in (6, 4, 3, 2, 1, 0):
+        lines = ["EndSARSList daily update"]
         if missing:
-            lines.append(f"Added to the EndSARSList missing register: {join_names([r['full_name'] for r in missing])}.")
+            lines.append(f"Missing/abducted added ({len(missing)}): {name_list(missing, limit)}" if limit else f"Missing/abducted added: {len(missing)}")
+        if found:
+            lines.append(f"Now found/released ({len(found)}): {name_list(found, limit)}" if limit else f"Now found/released: {len(found)}")
         if arrested:
-            lines.append(f"Added to the EndSARSList arrests register: {join_names([r['full_name'] for r in arrested])}.")
-    if resolved:
-        lines.append(f"Update: {join_names([r['full_name'] for r in resolved])} now marked found/released on EndSARSList.")
-    states = sorted({r["state"] for r in added + resolved if r.get("state") in base_states()})
-    tags = ["#" + ("Abuja" if s == "FCT" else s.replace(" ", "")) for s in states[:2]] + ["#MissingPersons", "#EndSARS"]
-    credit = f" (source: {source})" if source else ""
-    text = "\n\n".join(lines) + credit + "\n\nFull list: link in bio\n" + " ".join(tags)
-    return text if len(text) <= 280 else text[:277] + "..."
+            lines.append(f"Arrests added ({len(arrested)}): {name_list(arrested, limit)}" if limit else f"Arrests added: {len(arrested)}")
+        text = "\n".join(lines) + f"\n\n{credit}\nFull list: link in bio\n{tags}"
+        if len(text) <= 280:
+            return text
+    return text[:277] + "..."
 
 
 def base_states():
@@ -185,6 +198,7 @@ def run(dry_run: bool):
         accounts = [line.strip().lstrip("@") for line in handle if line.strip() and not line.startswith("#")]
     posts = fetch_recent(accounts)
     preview, counts, quotes = [], {}, 0
+    all_added, all_resolved, sources = [], [], []
     for post in posts:
         try:
             people = extract_post(post)
@@ -199,20 +213,24 @@ def run(dry_run: bool):
         preview.append({"post": f"https://x.com/{post['username']}/status/{post['id']}", "people": records})
         if dry_run or not records:
             continue
-        added, resolved = [], []
         for record in records:
             action = base.save(dict(record))
             counts[action] = counts.get(action, 0) + 1
-            (added if action == "inserted" else resolved if action == "updated" else []).append(record)
-        if (added or resolved) and quotes < MAX_QUOTES:
-            # Credit the source by name, not @mention: automated mentions are restricted by X.
-            text = quote_text(added, resolved, post["username"])
-            response = base.oauth.post("https://api.x.com/2/tweets", json={"text": text}, timeout=30)
-            if response.status_code in (200, 201):
-                quotes += 1
-                log.info("quoted %s: %s", post["id"], text.replace("\n", " | "))
-            else:
-                log.error("quote post failed %s: %s", response.status_code, response.text[:300])
+            if action in ("inserted", "updated"):
+                # Rescued/released people go under "found/released" whether new to the list or updated.
+                resolved_status = record["status"] not in ("missing", "detained")
+                (all_resolved if action == "updated" or resolved_status else all_added).append(record)
+                sources.append(post["username"])
+
+    # At most MAX_QUOTES (one) round-up post per run, covering everything saved today.
+    if not dry_run and (all_added or all_resolved) and quotes < MAX_QUOTES:
+        text = roundup_text(all_added, all_resolved, sources)
+        response = base.oauth.post("https://api.x.com/2/tweets", json={"text": text}, timeout=30)
+        if response.status_code in (200, 201):
+            quotes += 1
+            log.info("posted round-up: %s", text.replace("\n", " | "))
+        else:
+            log.error("round-up post failed %s: %s", response.status_code, response.text[:300])
 
     with open("x_watch_preview.json", "w", encoding="utf-8") as handle:
         json.dump({"accounts": accounts, "posts_read": len(posts), "results": preview}, handle, ensure_ascii=False, indent=1)

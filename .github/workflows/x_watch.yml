@@ -1,9 +1,8 @@
 name: Watch X news accounts
 
 on:
-  # Daily schedule switched on after the first dry run is reviewed:
-  # schedule:
-  #   - cron: '30 7 * * *'
+  schedule:
+    - cron: '30 7 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

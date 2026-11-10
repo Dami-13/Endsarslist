@@ -18,11 +18,19 @@ assert "abd¥cted" in queries[0] and "k+dnap" in queries[0] and "-is:reply" in q
 added = [{"kind": "missing", "full_name": "Bridget Okey", "state": "Enugu"},
          {"kind": "missing", "full_name": "Chukwubuike", "state": "Enugu"}]
 resolved = [{"kind": "missing", "full_name": "Musa Bello", "state": "Kebbi"}]
-text = xw.quote_text(added, resolved)
-assert text.startswith("Added to the EndSARSList missing register: Bridget Okey and Chukwubuike."), text
-assert "Update: Musa Bello now marked found/released" in text
+text = xw.roundup_text(added, resolved, ["instablog9ja", "MobilePunch"])
+assert text.startswith("EndSARSList daily update\nMissing/abducted added (2): Bridget Okey and Chukwubuike\nNow found/released (1): Musa Bello"), text
+assert "Sources: MobilePunch, instablog9ja" in text and "@" not in text
 assert "#Enugu" in text and "#Kebbi" in text and "http" not in text and "endsarslist.com" not in text
 assert len(text) <= 280
+
+# A busy day still fits in one post: name lists shrink to "and N more", then to counts.
+many = [{"kind": "missing", "full_name": f"Person Number{i} Longsurname", "state": "Kebbi"} for i in range(30)]
+arrests = [{"kind": "arrested", "full_name": f"Suspect Number{i} Longsurname", "state": "Kano"} for i in range(20)]
+busy = xw.roundup_text(many, many[:10], ["a", "b", "c", "d"])
+assert len(busy) <= 280 and "more" in busy, busy
+assert len(xw.roundup_text(many, many, ["x"]) ) <= 280
+assert len(xw.roundup_text(many + arrests, many, ["x"])) <= 280
 
 # Full run with faked network: one abduction post (new names -> quote), one rescue post (update -> quote), one with no names.
 posts = [
@@ -58,10 +66,10 @@ xw.base.oauth = FakeOAuth()
 xw.requests.post = lambda *a, **k: FakeResponse()
 xw.run(dry_run=False)
 assert saved == ["Bridget Okey", "Musa Bello"], saved
-assert len(quoted) == 2 and all("quote_tweet_id" not in q and "reply" not in q for q in quoted), quoted
-assert "(source: instablog9ja)" in quoted[0]["text"] and "@" not in quoted[0]["text"]
-assert quoted[0]["text"].startswith("Added to the EndSARSList missing register: Bridget Okey.")
-assert quoted[1]["text"].startswith("Update: Musa Bello now marked found/released")
+assert len(quoted) == 1 and "quote_tweet_id" not in quoted[0] and "reply" not in quoted[0], quoted
+assert "Sources: instablog9ja" in quoted[0]["text"] and "@" not in quoted[0]["text"]
+assert "Missing/abducted added (1): Bridget Okey" in quoted[0]["text"]
+assert "Now found/released (1): Musa Bello" in quoted[0]["text"]
 
 saved.clear(); quoted.clear()
 xw.run(dry_run=True)
