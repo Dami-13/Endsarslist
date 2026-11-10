@@ -48,7 +48,13 @@ Extra rules for news posts:
 - Names may appear only in the attached image or the linked article; read both.
 - For rescue/release stories, list each named rescued person with outcome "found_alive" (or "found_deceased").
 - For arrest stories, list each named arrested person with record_type "arrested".
-- Ignore words written with symbols to dodge filters (treat "abd¥cted" as "abducted")."""
+- Ignore words written with symbols to dodge filters (treat "abd¥cted" as "abducted").
+- Only include events reported as happening recently (within about the last month). Historical
+  events, anniversaries, memoirs or retrospectives (e.g. a politician's arrest decades ago) are "not_applicable".
+- An arrest warrant, a summons, being declared wanted or "facing arrest" is not an arrest: "not_applicable".
+- "Rescued" counts only for someone who was abducted, kidnapped or missing. People rescued from an attack,
+  mob, accident or illness who were never abducted are "not_applicable".
+- Someone who faked their own kidnapping and was arrested is "arrested", not "missing"."""
 
 
 MAX_QUERY_LENGTH = 512  # X recent search limit
